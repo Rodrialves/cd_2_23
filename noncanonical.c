@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define BAUDRATE B38400
 #define _POSIX_SOURCE 1 /* POSIX compliant source */
@@ -17,7 +18,7 @@
 #define A_RCV 2
 #define C_RCV 3
 #define BCC_OK 4
-#define STOP 5
+#define STOP_1 5
 
 
 /************** FLAGS ***************/
@@ -30,9 +31,9 @@ volatile int STOP=FALSE;
 
 int main(int argc, char** argv)
 {
-    int fd,c, res, i=0;
+    int fd,c, res, i=0, state=START;
     struct termios oldtio,newtio;
-    char buf[255], printer[255], aux[2];
+    unsigned char buf[255], printer[255], aux[2], x, aux1;
 
     if ( (argc < 2) ||
          ((strcmp("/dev/ttyS0", argv[1])!=0) &&
@@ -91,63 +92,65 @@ int main(int argc, char** argv)
         aux[res]='\0'; /* so we can printf... */
         printf(":%s:%d\n", aux, res);
         printer[i]=aux[0];
-        if (aux[0]=='\0') STOP=TRUE;
+        if (aux[0]=='\0'){STOP=1;}
         i++;
+        aux1=aux[0];
+        switch (state){
 
-        // switch (state){
-
-        //     case START:
-        //         if(aux == FLAG){
-        //             state = FLAG_RCV;
-        //         }
-        //         break;
+            case START:
+                if(aux1 == FLAG){
+                     state = FLAG_RCV;
+                }
+                break;
             
-        //     case FLAG_RCV:
-        //         if(aux == A){
-        //             state = A_RCV;
-        //         }
-        //         if(aux == FLAG_RCV){
-        //             break;
-        //         }
-        //         else{
-        //             state = START;
-        //         }
-        //         break;
+            case FLAG_RCV:
+                if(aux1 == A){
+                    state = A_RCV;
+                }
+                else if(aux1 == FLAG_RCV){
+                    continue;                    
+                }
+                else{
+                    state = START;
+                }
+                break;
 
-        //     case A_RCV:
-        //         if(aux == FLAG){
-        //             state = FLAG_RCV;
-        //         }
-        //         if(aux = C_SET){
-        //             state = C_RCV;
-        //         }
-        //         else{
-        //             state = START;
-        //         }
-        //         break;
-        //     case C_RCV:
-        //         unsigned char x = A^C_SET;
-        //         if(aux == FLAG){
-        //             state = FLAG_RCV;
-        //         }
-        //         if(aux == x){
-        //             state = BCC_OK;
-        //         }
-        //         else{
-        //             state = START;
-        //         }
-        //         break;
-        //     case BCC_OK:
-        //         if(aux == FLAG){
-        //             state = STOP; /* Chegar aqui é bom */
-        //         }
-        //         else{
-        //             state = START;
-        //         }
-        //         break;
-        //     }
-        // }
-    }
+            case A_RCV:
+                if(aux1 == FLAG){
+                    state = FLAG_RCV;
+                }
+                if(aux1 = C_SET){
+                    state = C_RCV;
+                }
+                else{
+                    state = START;
+                }
+                break;
+            case C_RCV:
+
+                x = A^C_SET;
+                if(aux1 == FLAG){
+                    state = FLAG_RCV;
+                }
+                if(aux1 == x){
+                    state = BCC_OK;
+                }
+                else{
+                    state = START;
+                }
+                break;
+            case BCC_OK:
+                if(aux1 == FLAG){
+                    state = STOP_1; /* Chegar aqui é bom */
+                }
+                else{
+                    state = START;
+                }
+                break;
+            }
+            printf("%d\n",state);
+        }
+    
         
         // printf("\n%s\n",printer);
 
