@@ -174,19 +174,19 @@ i=0;
  
  
 
-while(x!='\n'){ 
+/*while(x!='\n'){ 
 
 x = getchar(); 
 
 buf[i]=x; 
 
-if(x=='\n') 
+if(x=='\n')
 
 buf[i]='\0'; 
 
 i++; 
 
-} 
+}*/ 
 
     /*scanf("%s",&buf); 
 
@@ -208,12 +208,12 @@ i++;
     set[3]=set[1]^set[2];
     set[4]=set[0];
 
-    for (int i=0;i<5;i++){
+    /*for (int i=0;i<5;i++){
             printf("\n%x\n",set[i]);
-        }
+        }*/
     
 
-    res = write(fd,set,255); 
+    res = write(fd,set,5); 
 
     printf("%d bytes written\n", res); 
 
