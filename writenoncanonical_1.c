@@ -1,34 +1,35 @@
-/*Non-Canonical Input Processing*/ 
-
- 
- 
-
+/*Non-Canonical Input Processing*/
 #include <sys/types.h> 
-
 #include <sys/stat.h> 
-
 #include <fcntl.h> 
-
 #include <termios.h> 
-
 #include <stdio.h> 
-
 #include <string.h> 
-
 #include <stdlib.h> 
 
- 
- 
 
 #define BAUDRATE B38400 
-
 #define MODEMDEVICE "/dev/ttyS4" 
-
-#define _POSIX_SOURCE 1 /* POSIX compliant source */ 
-
+#define _POSIX_SOURCE 1 /* POSIX compliant source */
+#define TIMEOUT 30
 #define FALSE 0 
+#define TRUE 1
 
-#define TRUE 1 
+
+/************** STATES ***************/
+#define START 0
+#define FLAG_RCV 1
+#define A_RCV 2
+#define C_RCV 3
+#define BCC_OK 4
+#define STOP_1 5
+
+
+/************** FLAGS ***************/
+#define FLAG 0x5c
+#define A 0x03
+#define C_SET 0x03
+#define C_UA 0x07 
 
  
  
@@ -46,11 +47,12 @@ int fd,c, res;
 
 struct termios oldtio,newtio; 
 
-unsigned char buf[255], set[5]; 
+unsigned char buf[255], set[5], aux1, aux[2], printer[255]; 
 
-int i, sum = 0, speed = 0; 
+int i, sum = 0, speed = 0, state=0; 
 
-unsigned char x; 
+unsigned char x, y; 
+
 
  
  
@@ -119,9 +121,9 @@ newtio.c_lflag = 0;
  
  
 
-newtio.c_cc[VTIME] = 0; /* inter-character timer unused */ 
+newtio.c_cc[VTIME] = TIMEOUT; /* inter-character timer unused */ 
 
-newtio.c_cc[VMIN] = 5; /* blocking read until 5 chars received */ 
+newtio.c_cc[VMIN] = 1; /* blocking read until 1 char(s) received */ 
 
  
  
@@ -202,20 +204,100 @@ i++;
 
     }*/ 
 
-    set[2]=0x03;
+    
     set[0]=0x5c;
     set[1]=0x01;
+    set[2]=0x03;
     set[3]=set[1]^set[2];
     set[4]=set[0];
 
     /*for (int i=0;i<5;i++){
             printf("\n%x\n",set[i]);
         }*/
+
     
+    for(i=0;i<5;i++){
+        y=set[i];
+        res = write(fd, &y, 1); 
+        printf("%d bytes written\n", res); 
+    }
 
-    res = write(fd,set,5); 
+    sleep(1);
+    
+while (STOP==FALSE) {       /* loop for input */
+    res = read(fd,aux,1);   /* returns after 1 chars have been input */         
+    aux[res]='\0'; /* so we can printf... */
+    //printf(":%s:%d\n", aux, res);
+    printer[i] = aux[0];
+    if (aux[0]=='\0'){STOP=1;}
+    i++;
+    aux1=aux[0];
+    printf(":%x:\n",aux1);
+    
+    switch (state){
 
-    printf("%d bytes written\n", res); 
+        case START:
+            if(aux1 == FLAG){
+                    state = FLAG_RCV;
+            }
+            break;
+        
+       f("%d\n",state); case FLAG_RCV:
+            if(aux1 == A){
+                state = A_RCV;
+            }
+            else if(aux1 == FLAG_RCV){
+                continue;                    
+            }
+            else{
+                state = START;
+            }
+            break;
+
+        case A_RCV:
+            if(aux1 == FLAG){
+                state = FLAG_RCV;
+            }
+            if(aux1 = C_UA){
+                state = C_RCV;
+            }
+            else{
+                state = START;
+            }
+            break;
+        case C_RCV:
+
+            x = A^C_UA;
+            if(aux1 == FLAG){
+                state = FLAG_RCV;
+            }
+            if(aux1 == x){
+                state = BCC_OK;
+            }
+            else{
+                state = START;
+            }
+            break;
+        case BCC_OK:
+            if(aux1 == FLAG){
+                state = STOP_1; /* Chegar aqui é bom */
+                STOP=TRUE;
+            }
+            else{
+                state = START;
+            }
+            break;
+        }
+        printf("%d\n",state);
+    }
+
+    
+    // printf("\n%s\n",printer);
+
+    for (i=0;i<5;i++){
+        printf("\n%x\n",printer[i]);
+    }
+
 
  
  
