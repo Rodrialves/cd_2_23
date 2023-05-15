@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 {
     int fd,c, res, i=0, state=START;
     struct termios oldtio,newtio;
-    unsigned char buf[255], printer[255], aux[2], x, aux1;
+    unsigned char buf[255], printer[255], aux[2], x, aux1, set[5], z;
 
     if ( (argc < 2) ||
          ((strcmp("/dev/ttyS0", argv[1])!=0) &&
@@ -90,11 +90,12 @@ int main(int argc, char** argv)
     while (STOP==FALSE) {       /* loop for input */
         res = read(fd,aux,1);   /* returns after 1 chars have been input */         
         aux[res]='\0'; /* so we can printf... */
-        printf(":%x:%d\n", aux, res);
+        printf(":%x:%d\n", aux[0], res);
         printer[i] = aux[0];
         if (aux[0]=='\0'){STOP=1;}
         i++;
         aux1=aux[0];
+        
         switch (state){
 
             case START:
@@ -159,7 +160,20 @@ int main(int argc, char** argv)
             printf("\n%x\n",printer[i]);
         }
 
+    sleep(2);
 
+    set[0]=0x5c;
+    set[1]=0x03;
+    //set[2]=0x07;             /* Não esquecer tirar */
+    set[2]=0x09;
+    set[3]=set[1]^set[2];
+    set[4]=set[0];
+        
+    for(int n=0;n<5;n++){
+        z=set[n];
+        res = write(fd, &z, 1);
+                    
+    }
 
     /*
     O ciclo WHILE deve ser alterado de modo a respeitar o indicado no guião
