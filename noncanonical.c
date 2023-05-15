@@ -90,8 +90,8 @@ int main(int argc, char** argv)
     while (STOP==FALSE) {       /* loop for input */
         res = read(fd,aux,1);   /* returns after 1 chars have been input */         
         aux[res]='\0'; /* so we can printf... */
-        printf(":%s:%d\n", aux, res);
-        printer[i]=aux[0];
+        printf(":%x:%d\n", aux, res);
+        printer[i] = aux[0];
         if (aux[0]=='\0'){STOP=1;}
         i++;
         aux1=aux[0];
@@ -142,6 +142,7 @@ int main(int argc, char** argv)
             case BCC_OK:
                 if(aux1 == FLAG){
                     state = STOP_1; /* Chegar aqui é bom */
+                    STOP=TRUE;
                 }
                 else{
                     state = START;
