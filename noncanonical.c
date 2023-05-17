@@ -162,7 +162,7 @@ int main(int argc, char** argv)
 
     sleep(2);
 
-    set[0]=0x5c;
+    set[0]=FLAG;
     set[1]=0x03;
     //set[2]=0x07;             /* Não esquecer tirar */
     set[2]=0x09;

@@ -31,139 +31,83 @@
 #define C_SET 0x03
 #define C_UA 0x07 
 
- 
- 
+volatile int STOP=FALSE;
+int tries=0;
 
-volatile int STOP=FALSE; 
+/************** FUNCTIONS ***************/
+void write_func(int fd,unsigned char* vec ){
+    int i=0, res;
+    unsigned char y;
 
- 
- 
+    for(i=0;i<5;i++){
+        y=vec[i];
+        res = write(fd, &y, 1); 
+        printf("%d bytes written\n", res); 
+    }
+}
+
 
 int main(int argc, char** argv) 
-
 { 
-
 int fd,c, res; 
-
 struct termios oldtio,newtio; 
-
 unsigned char buf[255], set[5], aux1, aux[2], printer[255]; 
-
 int i, sum = 0, speed = 0, state=0; 
-
 unsigned char x, y; 
 
 
- 
- 
-
 if ( (argc < 2) || 
-
-((strcmp("/dev/ttyS0", argv[1])!=0) && 
-
+((strcmp("/dev/ttyS1", argv[1])!=0) && 
 (strcmp("/dev/ttyS4", argv[1])!=0) )) { 
-
 printf("Usage:\tnserial SerialPort\n\tex: nserial /dev/ttyS1\n"); 
-
 exit(1); 
-
 } 
-
- 
- 
  
 
 /* 
-
 Open serial port device for reading and writing and not as controlling tty 
-
 because we don't want to get killed if linenoise sends CTRL-C. 
-
 */ 
 
- 
- 
- 
 
 fd = open(argv[1], O_RDWR | O_NOCTTY ); 
 
 if (fd < 0) { perror(argv[1]); exit(-1); } 
 
- 
- 
-
 if ( tcgetattr(fd,&oldtio) == -1) { /* save current port settings */ 
-
 perror("tcgetattr"); 
-
 exit(-1); 
-
 } 
 
- 
- 
-
 bzero(&newtio, sizeof(newtio)); 
-
 newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD; 
-
 newtio.c_iflag = IGNPAR; 
-
 newtio.c_oflag = 0; 
-
- 
- 
 
 /* set input mode (non-canonical, no echo,...) */ 
 
 newtio.c_lflag = 0; 
-
  
- 
-
 newtio.c_cc[VTIME] = TIMEOUT; /* inter-character timer unused */ 
-
 newtio.c_cc[VMIN] = 1; /* blocking read until 1 char(s) received */ 
 
  
- 
- 
- 
-
 /* 
-
 VTIME e VMIN devem ser alterados de forma a proteger com um temporizador a 
-
 leitura do(s) próximo(s) caracter(es) 
-
 */ 
-
- 
- 
  
 
 tcflush(fd, TCIOFLUSH); 
 
- 
- 
-
 if (tcsetattr(fd,TCSANOW,&newtio) == -1) { 
-
 perror("tcsetattr"); 
-
 exit(-1); 
-
 } 
 
- 
- 
 
 printf("New termios structure set\n"); 
 
- 
- 
- 
- 
 
 for (i = 0; i < 255; i++) { 
 
@@ -172,62 +116,30 @@ buf[i] = '\0';
 } 
 
 i=0; 
-
- 
- 
-
-/*while(x!='\n'){ 
-
-x = getchar(); 
-
-buf[i]=x; 
-
-if(x=='\n')
-
-buf[i]='\0'; 
-
-i++; 
-
-}*/ 
-
-    /*scanf("%s",&buf); 
-
-    for(i=0; i<255;i++){ 
-
-    /*if(strcmp(buf[i],"/n")==0){ 
-
-    buf[i]="/0"; 
-
-    break; 
-
-    } 
-
-    }*/ 
-
     
-    set[0]=0x5c;
-    set[1]=0x01;
-    set[2]=0x03;
-    set[3]=set[1]^set[2];
-    set[4]=set[0];
+set[0]=FLAG;
+set[1]=0x01;
+set[2]=0x03;
+set[3]=set[1]^set[2];
+set[4]=0x09;
 
-    /*for (int i=0;i<5;i++){
-            printf("\n%x\n",set[i]);
-        }*/
+write_func(fd,set);
 
-    
-    for(i=0;i<5;i++){
-        y=set[i];
-        res = write(fd, &y, 1); 
-        printf("%d bytes written\n", res); 
-    }
-
-    sleep(1);
+sleep(1);
     
 while (STOP==FALSE) {       /* loop for input */
-    res = read(fd,aux,1);   /* returns after 1 chars have been input */         
+    res = read(fd,aux,1);   /* returns after 1 chars have been input */
+
+    if (res<0 ){
+        if(tries<=2)write_func(fd,set);
+        else{
+            printf("Can't connect to receiver\n");
+            exit(-1);
+        }
+        tries++;
+    }
+    
     aux[res]='\0'; /* so we can printf... */
-    //printf(":%s:%d\n", aux, res);
     printer[i] = aux[0];
     if (aux[0]=='\0'){STOP=1;}
     i++;
