@@ -164,8 +164,7 @@ int main(int argc, char** argv)
 
     set[0]=FLAG;
     set[1]=0x03;
-    //set[2]=0x07;             /* Não esquecer tirar */
-    set[2]=0x09;
+    set[2]=0x07;             /* Não esquecer tirar */
     set[3]=set[1]^set[2];
     set[4]=set[0];
         
