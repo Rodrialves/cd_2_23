@@ -9,8 +9,9 @@
 
 /************** GLOBAL VARIABLES ***************/
 volatile int STOP = FALSE;
-int tries = 0, fd;
+int tries = 0, fd, state = 0, res;
 struct termios oldtio, newtio;
+unsigned char ua[5], aux, x;
 
 /************** DEFAULTS ***************/
 #define BAUDRATE B38400
@@ -34,6 +35,12 @@ struct termios oldtio, newtio;
 #define A_UA 0x03
 #define C_SET 0x03
 #define C_UA 0x07
+#define C_DISC 0x0b
+
+/************** CONTROL ***************/
+#define SET 0
+#define UA 1
+#define DISC 2
 
 int write_func(unsigned char *vec)
 {
@@ -54,10 +61,103 @@ int write_func(unsigned char *vec)
     return 0;
 }
 
+void state_machine_control(int control)
+{
+    int a, c;
+
+    if (control == SET)
+    {
+        a = A_SET;
+        c = C_SET;
+    }
+
+    else if (control == UA)
+    {
+        a = A_UA;
+        c = C_UA;
+    }
+
+    else if (control == DISC)
+    {
+        a = A_SET;
+        c = C_DISC;
+    }
+
+    switch (state)
+    {
+
+    case START:
+        if (aux == FLAG)
+        {
+            state = FLAG_RCV;
+        }
+        break;
+
+    case FLAG_RCV:
+        if (aux == A_SET)
+        {
+            state = A_RCV;
+        }
+        else if (aux == FLAG_RCV)
+        {
+            continue;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+
+    case A_RCV:
+        if (aux == FLAG)
+        {
+            state = FLAG_RCV;
+        }
+        if (aux = C_SET)
+        {
+            state = C_RCV;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+
+    case C_RCV:
+
+        x = A_SET ^ C_SET;
+        if (aux == FLAG)
+        {
+            state = FLAG_RCV;
+        }
+        if (aux == x)
+        {
+            state = BCC_OK;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+
+    case BCC_OK:
+        if (aux == FLAG)
+        {
+            state = STOP_1;
+            STOP = TRUE;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+    }
+}
+
 int llopen(linkLayer connectionParameters)
 {
-    unsigned char aux, x, set[5], ua[5];
-    int state = 0, res, i = 0;
+    unsigned char set[5];
+    int i = 0;
 
     fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
 
@@ -118,9 +218,9 @@ int llopen(linkLayer connectionParameters)
 
         while (STOP == FALSE)
         {
-            res = read(fd, aux, 1);
+            res = read(fd, aux, 1); /* Read UA message sent from rx */
 
-            if ((res <= 0) && (state == 0))
+            if ((res <= 0) && (state == 0)) /* If the message was sent but didn`t receive confirmation, tries again */
             {
                 if (tries < connectionParameters.numTries)
                 {
@@ -137,73 +237,9 @@ int llopen(linkLayer connectionParameters)
                 tries++;
             }
 
-            switch (state)
-            {
+            state_machine_control(UA); /* Verifies that the UA message was received correctly*/
 
-            case START:
-                if (aux == FLAG)
-                {
-                    state = FLAG_RCV;
-                }
-                break;
-
-            case FLAG_RCV:
-                if (aux == A_UA)
-                {
-                    state = A_RCV;
-                }
-                else if (aux == FLAG_RCV)
-                {
-                    continue;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-
-            case A_RCV:
-                if (aux == FLAG)
-                {
-                    state = FLAG_RCV;
-                }
-                if (aux = C_UA)
-                {
-                    state = C_RCV;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-            case C_RCV:
-
-                x = A_UA ^ C_UA;
-                if (aux == FLAG)
-                {
-                    state = FLAG_RCV;
-                }
-                if (aux == x)
-                {
-                    state = BCC_OK;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-            case BCC_OK:
-                if (aux == FLAG)
-                {
-                    state = STOP_1;
-                    STOP = TRUE;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-            }
+            printf("UA success\n");
         }
 
         return 1;
@@ -212,85 +248,19 @@ int llopen(linkLayer connectionParameters)
     if (connectionParameters.role == 1)
     {
         while (STOP == FALSE)
-        {                           /* loop for input */
-            res = read(fd, aux, 1); /* returns after 1 chars have been input */
+        {
+            res = read(fd, aux, 1); /* Read SET message sent from tx */
 
-            if (res <= 0)
+            if (res <= 0) /* When number of tries exceed the intended, ends read process */
             {
                 printf("Timeout on RCV");
                 return -1;
             }
 
-            switch (state)
-            {
-
-            case START:
-                if (aux == FLAG)
-                {
-                    state = FLAG_RCV;
-                }
-                break;
-
-            case FLAG_RCV:
-                if (aux == A_SET)
-                {
-                    state = A_RCV;
-                }
-                else if (aux == FLAG_RCV)
-                {
-                    continue;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-
-            case A_RCV:
-                if (aux == FLAG)
-                {
-                    state = FLAG_RCV;
-                }
-                if (aux = C_SET)
-                {
-                    state = C_RCV;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-
-            case C_RCV:
-
-                x = A_SET ^ C_SET;
-                if (aux == FLAG)
-                {
-                    state = FLAG_RCV;
-                }
-                if (aux == x)
-                {
-                    state = BCC_OK;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-
-            case BCC_OK:
-                if (aux == FLAG)
-                {
-                    state = STOP_1;
-                    STOP = TRUE;
-                }
-                else
-                {
-                    state = START;
-                }
-                break;
-            }
+            state_machine_control(SET); /* Verifies that the SET message was received correctly*/
         }
+
+        printf("SET success\n");
 
         sleep(2);
 
@@ -312,6 +282,12 @@ int llopen(linkLayer connectionParameters)
 // Sends data in buf with size bufSize
 int llwrite(char *buf, int bufSize)
 {
+    int i=0;
+
+    for (i;i<bufSize;i++)
+    {
+        
+    }
     return 1;
 }
 
@@ -324,5 +300,99 @@ int llread(char *packet)
 // Closes previously opened connection; if showStatistics==TRUE, link layer should print statistics in the console on close
 int llclose(linkLayer connectionParameters, int showStatistics)
 {
-    return 1;
+    unsigned char disc[5];
+
+    if (connectionParameters.role == 0)
+    {
+        STOP = FALSE;
+        tries = 0;
+        state = 0;
+        int res;
+
+        disc[0] = FLAG;
+        disc[1] = A_SET;
+        disc[2] = C_DISC;
+        disc[3] = disc[1] ^ disc[2];
+        disc[4] = disc[0];
+
+        if (write_func(disc) == -1)
+            return -1;
+
+        while (STOP == FALSE)
+        {
+            res = read(fd, aux, 1);
+
+            if ((res <= 0) && (state == 0))
+            {
+                if (tries < connectionParameters.numTries)
+                {
+                    if (write_func(disc) == -1)
+                        return -1;
+                }
+
+                else
+                {
+                    printf("Can't connect to receiver\n");
+                    return -1;
+                }
+
+                tries++;
+            }
+
+            state_machine_control(DISC);
+        }
+
+        printf("DISC success\n");
+
+        if (write_func(ua) == -1)
+            return -1;
+
+        return 1;
+    }
+
+    if (connectionParameters.role == 1)
+    {
+        STOP = 0;
+        state = START;
+
+        while (STOP == FALSE)
+        {                           /* loop for input */
+            res = read(fd, aux, 1); /* returns after 1 chars have been input */
+
+            if (res <= 0)
+            {
+                printf("Timeout on RCV");
+                return -1;
+            }
+
+            state_machine_control(DISC);
+        }
+
+        printf("DISC success\n");
+
+        STOP = FALSE;
+        state = 0;
+
+        if (write_func(disc) == -1)
+            return -1;        
+
+        while (STOP == FALSE)
+        {                           /* loop for input */
+            res = read(fd, aux, 1); /* returns after 1 chars have been input */
+
+            if (res <= 0)
+            {
+                printf("Timeout on RCV");
+                return -1;
+            }
+
+            state_machine_control(UA);
+        }
+
+        printf("UA success\n");
+
+        return 1;
+    }
+
+    return -1;
 }
