@@ -28,6 +28,8 @@ unsigned char ua[5], aux, x;
 #define C_RCV 3
 #define BCC_OK 4
 #define STOP_1 5
+#define DATA 6
+#define STOP_2 7
 
 /************** VALUES ***************/
 #define FLAG 0x5c
@@ -36,6 +38,7 @@ unsigned char ua[5], aux, x;
 #define C_SET 0x03
 #define C_UA 0x07
 #define C_DISC 0x0b
+#define ESC 0x5d
 
 /************** CONTROL ***************/
 #define SET 0
@@ -153,6 +156,139 @@ void state_machine_control(int control)
         break;
     }
 }
+
+void state_machine_data()
+{
+    switch (state)
+    {
+
+    case START:
+        if (aux == FLAG)
+        {
+            state = FLAG_RCV;
+        }
+        break;
+
+    case FLAG_RCV:
+        if (aux == A_SET)
+        {
+            state = A_RCV;
+        }
+        else if (aux == FLAG_RCV)
+        {
+            continue;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+
+    case A_RCV:
+        if (aux == FLAG)
+        {
+            state = FLAG_RCV;
+        }
+        if (aux = C_SET)
+        {
+            state = C_RCV;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+
+    case C_RCV:
+
+        x = A_SET ^ C_SET;
+        if (aux == FLAG)
+        {
+            state = FLAG_RCV;
+        }
+        if (aux == x)
+        {
+            state = BCC_OK;
+        }
+        else
+        {
+            state = START;
+        }
+        break;
+
+    case BCC_OK:
+
+        state=DATA;
+        break;
+
+    case DATA:
+        if(aux==FLAG)
+        {
+            state=STOP_2;
+            STOP=TRUE;
+        }
+        else
+        {
+            state=DATA;
+        }
+        break;
+    }
+}
+
+int stuffing(unsigned char*vec,unsigned char*stuff,int len)
+{
+    int i=0, j=0;
+
+    for(i=0;i<len;i++){
+
+        stuff[j]=vec[i];
+
+        if(vec[i]==FLAG)
+        {
+            stuff[j]=ESC;
+            j++;
+            stuff[j]=vec[i]^0x20;
+        }
+
+        if(vec[i]==ESC)
+        {
+            stuff[j]=ESC;
+            j++;
+            stuff[j]=vec[i]^0x20;
+        }
+        j++;
+    }
+
+    return j;
+}
+
+int destuffing(unsigned char*vec,unsigned char*unstuff,int len)
+{
+    int i=0, j=0;
+
+    for(i=0;i<len;i++){
+
+        unstuff[j]=vec[i];
+
+        if(vec[i]==ESC && (vec[i+1]==(ESC^0x20)))
+        {
+            stuff[j]=ESC;
+            j++;
+            stuff[j]=vec[i]^0x20;
+        }
+
+        if(vec[i]==ESC)
+        {
+            stuff[j]=ESC;
+            j++;
+            stuff[j]=vec[i]^0x20;
+        }
+        j++;
+    }
+
+    return j;
+}
+
 
 int llopen(linkLayer connectionParameters)
 {
@@ -282,7 +418,10 @@ int llopen(linkLayer connectionParameters)
 // Sends data in buf with size bufSize
 int llwrite(char *buf, int bufSize)
 {
-    int i=0;
+    unsigned char stuff[bufSize*2];
+    int i=0,stuff_len;
+
+    stuff_len=stuffing(buf,stuff,bufSize);
 
     for (i;i<bufSize;i++)
     {
