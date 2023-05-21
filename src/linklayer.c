@@ -68,14 +68,12 @@ int write_func(unsigned char *vec, int len)
         return -1;
 
     printf("%d bytes written\n", total);
-    return 1;
+    return 0;
 }
 
 void state_machine_control(int control)
 {
-    unsigned char a, c;
-
-    printf("0x%02x\n", (unsigned int)(aux & 0xFF));
+    int a, c;
 
     if (control == SET)
     {
@@ -118,6 +116,7 @@ void state_machine_control(int control)
         }
         else if (aux == FLAG_RCV)
         {
+            
         }
         else
         {
@@ -144,7 +143,6 @@ void state_machine_control(int control)
 
         x = a ^ c;
         printf("0x%02x\n", (unsigned int)(x & 0xFF));
-
         if (aux == FLAG)
         {
             state = FLAG_RCV;
@@ -175,7 +173,6 @@ void state_machine_control(int control)
 
 void state_machine_data()
 {
-    printf("0x%02x\n", (unsigned int)(aux & 0xFF));
     switch (state)
     {
 
@@ -205,7 +202,7 @@ void state_machine_data()
         {
             state = FLAG_RCV;
         }
-        if (aux = C_I1)
+        if (aux = C_I0)
         {
             state = C_RCV;
         }
@@ -217,7 +214,7 @@ void state_machine_data()
 
     case C_RCV:
 
-        x = A_SET ^ C_I1;
+        x = A_SET ^ C_SET;
         if (aux == FLAG)
         {
             state = FLAG_RCV;
@@ -243,7 +240,10 @@ void state_machine_data()
             state = STOP_2;
             STOP = TRUE;
         }
-
+        else
+        {
+            state = DATA;
+        }
         break;
     }
 }
@@ -281,9 +281,7 @@ int destuffing(unsigned char *vec, unsigned char *unstuff, int len)
     int i = 0, j = 0, size;
     unsigned char bcc2;
 
-    printf("\nUnstuff len: %i\n", len);
-
-    for (i = 0; i < len; i++)
+    for (i = 4; i < len - 1; i++)
     {
 
         unstuff[j] = vec[i];
@@ -304,15 +302,13 @@ int destuffing(unsigned char *vec, unsigned char *unstuff, int len)
 
     size = j;
 
-    printf("Destuff len: %i\n", size);
-
     bcc2 = unstuff[0] ^ unstuff[1];
-    for (i = 2; i < j - 1; i++)
+    for (i = 2; i < j - 2; i++)
     {
         bcc2 = bcc2 ^ unstuff[i];
     }
 
-    if (bcc2 == vec[len - 1])
+    if (bcc2 == unstuff[j])
         return size;
 
     return -1;
@@ -322,12 +318,6 @@ int llopen(linkLayer connectionParameters)
 {
     unsigned char set[5];
     int i = 0;
-
-    ua[0] = FLAG;
-    ua[1] = A_UA;
-    ua[2] = C_UA;
-    ua[3] = ua[1] ^ ua[2];
-    ua[4] = ua[0];
 
     fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
 
@@ -350,12 +340,12 @@ int llopen(linkLayer connectionParameters)
 
     newtio.c_lflag = 0;
 
-    newtio.c_cc[VTIME] = connectionParameters.timeOut * 10;
+    newtio.c_cc[VTIME] = connectionParameters.timeOut;
     newtio.c_cc[VMIN] = 0;
 
     if (connectionParameters.role == 1)
     {
-        newtio.c_cc[VTIME] = connectionParameters.timeOut * 30;
+        newtio.c_cc[VTIME] = connectionParameters.timeOut * 3;
         newtio.c_cc[VMIN] = 0;
     }
 
@@ -367,7 +357,7 @@ int llopen(linkLayer connectionParameters)
         exit(-1);
     }
 
-    printf("---- New termios structure set ----\n");
+    printf("New termios structure set\n");
 
     if (connectionParameters.role == 0)
     {
@@ -388,7 +378,7 @@ int llopen(linkLayer connectionParameters)
 
         while (STOP == FALSE)
         {
-            res = read(fd, &aux, 1); /* Read UA message sent from rx */
+            res = read(fd, aux, 1); /* Read UA message sent from rx */
 
             if ((res <= 0) && (state == 0)) /* If the message was sent but didn`t receive confirmation, tries again */
             {
@@ -408,12 +398,12 @@ int llopen(linkLayer connectionParameters)
             }
 
             printf("0x%02x\n", (unsigned int)(aux & 0xFF));
-
             state_machine_control(UA); /* Verifies that the UA message was received correctly*/
-            printf("State: %i\n", state);
+            
+            
         }
 
-        printf("UA success\n");
+
 
         return 1;
     }
@@ -422,11 +412,11 @@ int llopen(linkLayer connectionParameters)
     {
         while (STOP == FALSE)
         {
-            res = read(fd, &aux, 1); /* Read SET message sent from tx */
+            res = read(fd, aux, 1); /* Read SET message sent from tx */
 
             if (res <= 0) /* When number of tries exceed the intended, ends read process */
             {
-                printf("Timeout on RCV\n\n");
+                printf("Timeout on RCV");
                 return -1;
             }
 
@@ -437,11 +427,14 @@ int llopen(linkLayer connectionParameters)
 
         sleep(2);
 
-        if (write_func(ua, 5) == -1)
-        {
-            printf("Error writting UA\n");
+        ua[0] = FLAG;
+        ua[1] = A_UA;
+        ua[2] = C_UA;
+        ua[3] = set[1] ^ set[2];
+        ua[4] = set[0];
+
+        if (write_func(ua, 5))
             return -1;
-        }
 
         return 1;
     }
@@ -460,7 +453,7 @@ int llwrite(char *buf, int bufSize)
 
     append[0] = FLAG;
     append[1] = A_SET;
-    append[2] = C_I1; /*see if it's the right value*/
+    append[2] = C_I0; /*see if it's the right value*/
     append[3] = append[1] ^ append[2];
 
     bcc2 = buf[0] ^ buf[1];
@@ -488,15 +481,15 @@ int llwrite(char *buf, int bufSize)
     if (write_func(append, 1) == -1)
         return -1;
 
-    printf("\n---- Frame sent ----\n\n");
+    printf("Frame sent\n");
 
     while (STOP == FALSE)
     {
-        res = read(fd, &aux, 1); /* Read UA message sent from rx */
+        res = read(fd, aux, 1); /* Read UA message sent from rx */
 
         if ((res <= 0) && (state == 0)) /* If the message was sent but didn`t receive confirmation, tries again */
         {
-            if (tries < 3)
+            if (tries < connectionParameters.numTries)
             {
                 if (write_func(append, 4) == -1)
                     return -1;
@@ -522,57 +515,50 @@ int llwrite(char *buf, int bufSize)
 
     printf("Confirmation received\n");
 
-    return bufSize;
+    return 1;
 }
 
 // Receive data in packet
 int llread(char *packet)
 {
     int i = 0, len;
-    unsigned char stuff[MAX_PAYLOAD_SIZE * 2 + 6], rr[5], destuff[MAX_PAYLOAD_SIZE + 1];
+    unsigned char stuff[MAX_PAYLOAD_SIZE * 2 + 6],rr[5];
     STOP = 0;
     state = START;
 
-    rr[0] = FLAG;
-    rr[1] = A_SET;
-    rr[2] = C_I1;
-    rr[3] = rr[1] ^ rr[2];
-    rr[4] = rr[0];
+    rr[0]=FLAG;
+    rr[1]=A_SET;
+    rr[2]=C_I1;
+    rr[3]=rr[1]^rr[2];
+    rr[4]=rr[0];
 
     while (STOP == FALSE)
-    {                            /* loop for input */
-        res = read(fd, &aux, 1); /* returns after 1 chars have been input */
+    {                           /* loop for input */
+        res = read(fd, aux, 1); /* returns after 1 chars have been input */
 
         if (res <= 0)
         {
-            printf("Timeout on RCV (llread)\n");
+            printf("Timeout on RCV");
             return -1;
         }
 
         state_machine_data();
-        if (state == DATA)
-        {
-            stuff[i] = aux;
-            i++;
-        }
+
+        i++;
     }
 
-    len = destuffing(stuff, destuff, i);
+    len = destuffing(stuff, packet, i);
     if (len == -1)
         return -1;
-    len--;
-    for (i = 0; i < len; i++)
-    {
-        packet[i] = destuff[i];
-    }
-    printf("Bytes received: %i\n", len);
 
-    printf("\n---- Frame received correctly ----\n\n");
+    printf("Received corretly\n");
 
     if (write_func(rr, 5) == -1)
         return -1;
 
-    return len;
+    
+
+    return 1;
 }
 
 // Closes previously opened connection; if showStatistics==TRUE, link layer should print statistics in the console on close
@@ -580,27 +566,24 @@ int llclose(linkLayer connectionParameters, int showStatistics)
 {
     unsigned char disc[5];
 
-    disc[0] = FLAG;
-    disc[1] = A_SET;
-    disc[2] = C_DISC;
-    disc[3] = disc[1] ^ disc[2];
-    disc[4] = disc[0];
-
     if (connectionParameters.role == 0)
     {
         STOP = FALSE;
         tries = 0;
         state = 0;
 
+        disc[0] = FLAG;
+        disc[1] = A_SET;
+        disc[2] = C_DISC;
+        disc[3] = disc[1] ^ disc[2];
+        disc[4] = disc[0];
+
         if (write_func(disc, 5) == -1)
             return -1;
 
-        printf("DISC sent\n");
-
         while (STOP == FALSE)
         {
-            res = read(fd, &aux, 1);
-            printf("%i", res);
+            res = read(fd, aux, 1);
 
             if ((res <= 0) && (state == 0))
             {
@@ -620,15 +603,12 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             }
 
             state_machine_control(DISC);
-            printf("State: %i\n", state);
         }
 
         printf("DISC success\n");
 
         if (write_func(ua, 5) == -1)
             return -1;
-
-        printf("UA sent\n\n---- File successfully sent ----\n");
 
         return 1;
     }
@@ -639,8 +619,8 @@ int llclose(linkLayer connectionParameters, int showStatistics)
         state = START;
 
         while (STOP == FALSE)
-        {                            /* loop for input */
-            res = read(fd, &aux, 1); /* returns after 1 chars have been input */
+        {                           /* loop for input */
+            res = read(fd, aux, 1); /* returns after 1 chars have been input */
 
             if (res <= 0)
             {
@@ -649,7 +629,6 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             }
 
             state_machine_control(DISC);
-            printf("State: %i\n", state);
         }
 
         printf("DISC success\n");
@@ -657,16 +636,12 @@ int llclose(linkLayer connectionParameters, int showStatistics)
         STOP = FALSE;
         state = 0;
 
-        sleep(1);
-
         if (write_func(disc, 5) == -1)
             return -1;
 
-        printf("DISC sent\n");
-
         while (STOP == FALSE)
-        {                            /* loop for input */
-            res = read(fd, &aux, 1); /* returns after 1 chars have been input */
+        {                           /* loop for input */
+            res = read(fd, aux, 1); /* returns after 1 chars have been input */
 
             if (res <= 0)
             {
@@ -675,12 +650,9 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             }
 
             state_machine_control(UA);
-            printf("State: %i\n", state);
         }
 
-        printf("UA success\n\n---- File received and stored ----\n");
-
-
+        printf("UA success\n");
 
         return 1;
     }
