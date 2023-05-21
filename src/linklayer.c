@@ -40,7 +40,7 @@ unsigned char ua[5], aux, x;
 #define C_DISC 0x0b
 #define C_I0 0x00
 #define C_I1 0x02
-#define ESC 0x5d 
+#define ESC 0x5d
 
 /*
 Verificar todos os valores!!!
@@ -50,23 +50,24 @@ Verificar todos os valores!!!
 #define SET 0
 #define UA 1
 #define DISC 2
+#define RR 3
 
-int write_func(unsigned char *vec)
+int write_func(unsigned char *vec, int len)
 {
     int i = 0, res, total = 0;
     unsigned char y;
 
-    for (i = 0; i < 5; i++)
+    for (i = 0; i < len; i++)
     {
         y = vec[i];
         res = write(fd, &y, 1);
-        printf("%d bytes written\n", res);
         total += res;
     }
 
-    if (total != 5)
+    if (total != len)
         return -1;
 
+    printf("%d bytes written\n", total);
     return 0;
 }
 
@@ -92,6 +93,12 @@ void state_machine_control(int control)
         c = C_DISC;
     }
 
+    else if (control == RR)
+    {
+        a = A_SET;
+        c = C_I1;
+    }
+
     switch (state)
     {
 
@@ -103,7 +110,7 @@ void state_machine_control(int control)
         break;
 
     case FLAG_RCV:
-        if (aux == A_SET)
+        if (aux == a)
         {
             state = A_RCV;
         }
@@ -122,7 +129,7 @@ void state_machine_control(int control)
         {
             state = FLAG_RCV;
         }
-        if (aux = C_SET)
+        if (aux = c)
         {
             state = C_RCV;
         }
@@ -134,7 +141,7 @@ void state_machine_control(int control)
 
     case C_RCV:
 
-        x = A_SET ^ C_SET;
+        x = a ^ c;
         if (aux == FLAG)
         {
             state = FLAG_RCV;
@@ -195,7 +202,7 @@ void state_machine_data()
         {
             state = FLAG_RCV;
         }
-        if (aux = C_SET)
+        if (aux = C_I0)
         {
             state = C_RCV;
         }
@@ -274,7 +281,7 @@ int destuffing(unsigned char *vec, unsigned char *unstuff, int len)
     int i = 0, j = 0, size;
     unsigned char bcc2;
 
-    for (i = 0; i < len; i++)
+    for (i = 4; i < len - 1; i++)
     {
 
         unstuff[j] = vec[i];
@@ -285,7 +292,7 @@ int destuffing(unsigned char *vec, unsigned char *unstuff, int len)
             i++;
         }
 
-        if ((vec[i] == ESC) && (vec[i + 1] == (ESC ^ 0x20)))
+        else if ((vec[i] == ESC) && (vec[i + 1] == (ESC ^ 0x20)))
         {
             unstuff[j] = ESC;
             i++;
@@ -293,13 +300,16 @@ int destuffing(unsigned char *vec, unsigned char *unstuff, int len)
         j++;
     }
 
-    bcc2=unstuff[0]^unstuff[1];
-    for(i=2;i<j-2;i++)
+    size = j;
+
+    bcc2 = unstuff[0] ^ unstuff[1];
+    for (i = 2; i < j - 2; i++)
     {
-        bcc2=bcc2^unstuff[i];
+        bcc2 = bcc2 ^ unstuff[i];
     }
 
-    if(bcc2==unstuff[j-1]) return 1;
+    if (bcc2 == unstuff[j])
+        return size;
 
     return -1;
 }
@@ -361,7 +371,7 @@ int llopen(linkLayer connectionParameters)
         set[3] = set[1] ^ set[2];
         set[4] = FLAG;
 
-        if (write_func(set) == -1)
+        if (write_func(set, 5) == -1)
             return -1;
 
         sleep(1);
@@ -374,7 +384,7 @@ int llopen(linkLayer connectionParameters)
             {
                 if (tries < connectionParameters.numTries)
                 {
-                    if (write_func(set) == -1)
+                    if (write_func(set, 5) == -1)
                         return -1;
                 }
 
@@ -420,7 +430,7 @@ int llopen(linkLayer connectionParameters)
         ua[3] = set[1] ^ set[2];
         ua[4] = set[0];
 
-        if (write_func(ua))
+        if (write_func(ua, 5))
             return -1;
 
         return 1;
@@ -432,35 +442,119 @@ int llopen(linkLayer connectionParameters)
 // Sends data in buf with size bufSize
 int llwrite(char *buf, int bufSize)
 {
-    unsigned char stuff[bufSize * 2+6], bcc2, buf1[bufSize+6];
+    unsigned char stuff[(MAX_PAYLOAD_SIZE)*2 + 1], bcc2, buf1[bufSize + 1], append[4];
     int i = 0, stuff_len;
+    tries = 0;
+    STOP = FALSE;
+    state = START;
 
-    bcc2=buf[0]^buf[1];
+    append[0] = FLAG;
+    append[1] = A_SET;
+    append[2] = C_I0; /*see if it's the right value*/
+    append[3] = append[1] ^ append[2];
 
-    for (i=2;i<bufSize;i++)
+    bcc2 = buf[0] ^ buf[1];
+
+    for (i = 2; i < bufSize; i++)
     {
-        bcc2=bcc2^buf[i];
+        bcc2 = bcc2 ^ buf[i];
     }
 
-    buf1[0]=FLAG;
-    buf1[1]=A_SET;
-    buf1[2]=C_I0;
-    buf1[3]=buf1[1]^buf1[2];
-    buf1[bufSize+4]=bcc2;
-    buf1[bufSize+5]=FLAG;
+    buf1[bufSize] = bcc2;
 
-    stuff_len = stuffing(buf1, stuff, bufSize);
-
-    for (i; i < bufSize; i++)
+    for (i = 0; i < bufSize; i++)
     {
-        res=write();
+        buf1[i] = buf[i];
     }
+
+    stuff_len = stuffing(buf1, stuff, bufSize + 1);
+
+    if (write_func(append, 4) == -1)
+        return -1;
+
+    if (write_func(stuff, stuff_len) == -1)
+        return -1;
+
+    if (write_func(append, 1) == -1)
+        return -1;
+
+    printf("Frame sent\n");
+
+    while (STOP == FALSE)
+    {
+        res = read(fd, aux, 1); /* Read UA message sent from rx */
+
+        if ((res <= 0) && (state == 0)) /* If the message was sent but didn`t receive confirmation, tries again */
+        {
+            if (tries < connectionParameters.numTries)
+            {
+                if (write_func(append, 4) == -1)
+                    return -1;
+
+                if (write_func(stuff, stuff_len) == -1)
+                    return -1;
+
+                if (write_func(append, 1) == -1)
+                    return -1;
+            }
+
+            else
+            {
+                printf("Can't connect to receiver\n");
+                return -1;
+            }
+
+            tries++;
+        }
+
+        state_machine_control(RR); /* Verifies that the UA message was received correctly*/
+    }
+
+    printf("Confirmation received\n");
+
     return 1;
 }
 
 // Receive data in packet
 int llread(char *packet)
 {
+    int i = 0, len;
+    unsigned char stuff[MAX_PAYLOAD_SIZE * 2 + 6],rr[5];
+    STOP = 0;
+    state = START;
+
+    rr[0]=FLAG;
+    rr[1]=A_SET;
+    rr[2]=C_I1;
+    rr[3]=rr[1]^rr[2];
+    rr[4]=rr[0];
+
+    while (STOP == FALSE)
+    {                           /* loop for input */
+        res = read(fd, aux, 1); /* returns after 1 chars have been input */
+
+        if (res <= 0)
+        {
+            printf("Timeout on RCV");
+            return -1;
+        }
+
+        state_machine_data();
+
+        i++;
+    }
+
+    len = destuffing(stuff, packet, i);
+    if (len == -1)
+        return -1;
+
+    printf("Received corretly\n");
+
+    if (write_func(rr, 5) == -1)
+        return -1;
+
+    
+
     return 1;
 }
 
@@ -474,7 +568,6 @@ int llclose(linkLayer connectionParameters, int showStatistics)
         STOP = FALSE;
         tries = 0;
         state = 0;
-        int res;
 
         disc[0] = FLAG;
         disc[1] = A_SET;
@@ -482,7 +575,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
         disc[3] = disc[1] ^ disc[2];
         disc[4] = disc[0];
 
-        if (write_func(disc) == -1)
+        if (write_func(disc, 5) == -1)
             return -1;
 
         while (STOP == FALSE)
@@ -493,7 +586,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             {
                 if (tries < connectionParameters.numTries)
                 {
-                    if (write_func(disc) == -1)
+                    if (write_func(disc, 5) == -1)
                         return -1;
                 }
 
@@ -511,7 +604,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
 
         printf("DISC success\n");
 
-        if (write_func(ua) == -1)
+        if (write_func(ua, 5) == -1)
             return -1;
 
         return 1;
@@ -540,7 +633,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
         STOP = FALSE;
         state = 0;
 
-        if (write_func(disc) == -1)
+        if (write_func(disc, 5) == -1)
             return -1;
 
         while (STOP == FALSE)

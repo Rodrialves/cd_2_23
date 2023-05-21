@@ -30,24 +30,32 @@
 
 volatile int STOP = FALSE;
 int tries = 0;
+int fd;
 
 /************** FUNCTIONS ***************/
-void write_func(int fd, unsigned char *vec)
+int write_func(unsigned char *vec, int len)
 {
-    int i = 0, res;
+    int i = 0, res, total = 0;
     unsigned char y;
 
-    for (i = 0; i < 5; i++)
+    for (i = 0; i < len; i++)
     {
         y = vec[i];
         res = write(fd, &y, 1);
         printf("%d bytes written\n", res);
+        total += res;
     }
+
+    if (total != len)
+        return -1;
+
+    printf("%d bytes written\n", total);
+    return 0;
 }
 
 int main(int argc, char **argv)
 {
-    int fd, c, res;
+    int c, res;
     struct termios oldtio, newtio;
     unsigned char buf[255], set[5], aux1, aux[2], printer[255];
     int i, sum = 0, speed = 0, state = 0;
@@ -121,7 +129,7 @@ int main(int argc, char **argv)
     set[3] = set[1] ^ set[2];
     set[4] = FLAG;
 
-    write_func(fd, set);
+    write_func(set, 5);
 
     sleep(1);
 
@@ -133,7 +141,7 @@ int main(int argc, char **argv)
         if ((res <= 0) && (state == 0))
         {
             if (tries <= 2)
-                write_func(fd, set);
+                write_func(set, 5);
             else
             {
                 printf("Can't connect to receiver\n");
