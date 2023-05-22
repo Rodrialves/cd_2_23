@@ -439,7 +439,7 @@ int llopen(linkLayer connectionParameters)
 
             if ((res <= 0) && (state == 0)) /* If the message was sent but didn`t receive confirmation, tries again */
             {
-                if (tries < connectionParameters.numTries)
+                if (tries < connectionParameters.numTries-1)
                 {
                     if (write_func(set, 5) == -1)
                         return -1;
@@ -484,8 +484,6 @@ int llopen(linkLayer connectionParameters)
         stats.recebidas++;
 
         printf("SET success\n");
-
-        sleep(2);
 
         if (write_func(ua, 5) == -1)
         {
@@ -674,7 +672,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
 
             if ((res <= 0) && (state == 0))
             {
-                if (tries < connectionParameters.numTries)
+                if (tries < connectionParameters.numTries-1)
                 {
                     if (write_func(disc, 5) == -1)
                         return -1;
@@ -735,8 +733,6 @@ int llclose(linkLayer connectionParameters, int showStatistics)
 
         STOP = FALSE;
         state = 0;
-
-        sleep(1);
 
         if (write_func(disc, 5) == -1)
             return -1;

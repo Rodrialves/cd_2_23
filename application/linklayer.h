@@ -23,11 +23,6 @@ typedef struct linkLayer{
 typedef struct estatisticas{
     int enviadas;
     int recebidas;
-    int confirmadas;
-    int rejeitadas;
-    int Tout;
-    int totalTramasI;
-    float Tmedio;
     clock_t Ttotal;
 } estatisticas;
 
