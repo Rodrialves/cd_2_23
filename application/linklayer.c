@@ -6,11 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 /************** GLOBAL VARIABLES ***************/
 volatile int STOP = FALSE;
 int tries = 0, fd, state = 0, res, ctrl_val = 0;
 struct termios oldtio, newtio;
+struct estatisticas stats;
 unsigned char ua[5], aux, x, a, c;
 
 /************** DEFAULTS ***************/
@@ -40,6 +42,10 @@ unsigned char ua[5], aux, x, a, c;
 #define C_DISC 0x0b
 #define C_I0 0x00
 #define C_I1 0x02
+#define C_R0 0x01
+#define C_R1 0x21
+#define C_RJ0 0x05
+#define C_RJ1 0x25
 #define ESC 0x5d
 
 /*
@@ -51,6 +57,35 @@ Verificar todos os valores!!!
 #define UA 1
 #define DISC 2
 #define RR 3
+
+void initEstatistica()
+{
+    stats.enviadas = 0;
+    stats.recebidas = 0;
+    clock_t Ttotal = clock();
+}
+
+void print_stats()
+{
+
+    printf("\n");
+    printf("************* DADOS DE LIGAÇÃO *************\n");
+
+    if (stats.enviadas != 0)
+    {
+        printf(" - Mensagens enviadas: %d\n", stats.enviadas);
+        printf(" - Tempo medio por trama recebida: %ld ms\n", stats.Ttotal / stats.enviadas);
+    }
+
+    if (stats.recebidas != 0)
+    {
+        printf(" - Messagens recebidas: %d\n", stats.recebidas);
+        printf(" - Tempo medio por trama enviada: %ld ms\n", stats.Ttotal / stats.recebidas);
+        printf(" - Tempo total do programa: %ld ms\n", stats.Ttotal);
+    }
+
+    printf("\n\n");
+}
 
 int write_func(unsigned char *vec, int len)
 {
@@ -75,6 +110,8 @@ void state_machine_control(int control)
 {
     if (aux == C_I0)
         c = C_I0;
+    else if (aux == C_I1)
+        c = C_I1;
     else if (aux == C_I1)
         c = C_I1;
 
@@ -146,7 +183,7 @@ void state_machine_control(int control)
     case C_RCV:
 
         x = a ^ c;
-        
+
         if (aux == FLAG)
         {
             state = FLAG_RCV;
@@ -322,7 +359,7 @@ int destuffing(unsigned char *vec, unsigned char *unstuff, int len)
 
     if (bcc2 == vec[len - 1])
         return size;
-
+    
     return -1;
 }
 
@@ -330,6 +367,8 @@ int llopen(linkLayer connectionParameters)
 {
     unsigned char set[5];
     int i = 0;
+
+    initEstatistica();
 
     ua[0] = FLAG;
     ua[1] = A_UA;
@@ -392,7 +431,7 @@ int llopen(linkLayer connectionParameters)
         if (write_func(set, 5) == -1)
             return -1;
 
-        sleep(1);
+        stats.enviadas++;
 
         while (STOP == FALSE)
         {
@@ -404,6 +443,7 @@ int llopen(linkLayer connectionParameters)
                 {
                     if (write_func(set, 5) == -1)
                         return -1;
+                    stats.enviadas++;
                 }
 
                 else
@@ -421,6 +461,7 @@ int llopen(linkLayer connectionParameters)
             printf("State: %i\n", state);
         }
 
+        stats.recebidas++;
         printf("UA success\n");
 
         return 1;
@@ -440,6 +481,7 @@ int llopen(linkLayer connectionParameters)
 
             state_machine_control(SET); /* Verifies that the SET message was received correctly*/
         }
+        stats.recebidas++;
 
         printf("SET success\n");
 
@@ -450,6 +492,7 @@ int llopen(linkLayer connectionParameters)
             printf("Error writting UA\n");
             return -1;
         }
+        stats.enviadas++;
 
         return 1;
     }
@@ -468,7 +511,7 @@ int llwrite(char *buf, int bufSize)
 
     append[0] = FLAG;
     append[1] = A_SET;
-    append[2] = C_I0; 
+    append[2] = C_I0;
     if (ctrl_val % 2)
         append[2] = C_I1;
     append[3] = append[1] ^ append[2];
@@ -500,6 +543,8 @@ int llwrite(char *buf, int bufSize)
     if (write_func(append, 1) == -1)
         return -1;
 
+    stats.enviadas += 3;
+
     printf("\n---- Frame sent ----\n\n");
 
     while (STOP == FALSE)
@@ -518,6 +563,8 @@ int llwrite(char *buf, int bufSize)
 
                 if (write_func(append, 1) == -1)
                     return -1;
+
+                stats.enviadas += 3;
             }
 
             else
@@ -532,6 +579,7 @@ int llwrite(char *buf, int bufSize)
         state_machine_control(RR); /* Verifies that the UA message was received correctly*/
     }
 
+    stats.recebidas++;
     ctrl_val++;
 
     printf("\n----- Confirmation received ----\n\n");
@@ -586,10 +634,13 @@ int llread(char *packet)
     ctrl_val++;
     printf("Control flag val: %i\n", ctrl_val);
 
+    stats.recebidas++;
     printf("\n---- Frame received correctly ----\n\n");
 
     if (write_func(rr, 5) == -1)
         return -1;
+
+    stats.enviadas++;
 
     return len;
 }
@@ -613,13 +664,13 @@ int llclose(linkLayer connectionParameters, int showStatistics)
 
         if (write_func(disc, 5) == -1)
             return -1;
+        stats.enviadas++;
 
         printf("DISC sent\n");
 
         while (STOP == FALSE)
         {
             res = read(fd, &aux, 1);
-            printf("%i", res);
 
             if ((res <= 0) && (state == 0))
             {
@@ -627,6 +678,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
                 {
                     if (write_func(disc, 5) == -1)
                         return -1;
+                    stats.enviadas++;
                 }
 
                 else
@@ -642,12 +694,19 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             printf("State: %i\n", state);
         }
 
+        stats.recebidas++;
+
         printf("DISC success\n");
 
         if (write_func(ua, 5) == -1)
             return -1;
+        stats.enviadas++;
 
         printf("UA sent\n\n---- File successfully sent ----\n");
+        stats.Ttotal = clock() - stats.Ttotal;
+
+        if (showStatistics)
+            print_stats();
 
         return 1;
     }
@@ -671,6 +730,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             printf("State: %i\n", state);
         }
 
+        stats.recebidas++;
         printf("DISC success\n");
 
         STOP = FALSE;
@@ -680,6 +740,7 @@ int llclose(linkLayer connectionParameters, int showStatistics)
 
         if (write_func(disc, 5) == -1)
             return -1;
+        stats.enviadas++;
 
         printf("DISC sent\n");
 
@@ -696,8 +757,12 @@ int llclose(linkLayer connectionParameters, int showStatistics)
             state_machine_control(UA);
             printf("State: %i\n", state);
         }
-
+        stats.recebidas++;
         printf("UA success\n\n---- File received and stored ----\n");
+        stats.Ttotal = clock() - stats.Ttotal;
+
+        if (showStatistics)
+            print_stats();
 
         return 1;
     }
