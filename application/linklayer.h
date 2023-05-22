@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 typedef struct linkLayer{
     char serialPort[50];
@@ -18,6 +19,17 @@ typedef struct linkLayer{
     int numTries;
     int timeOut;
 } linkLayer;
+
+typedef struct estatisticas{
+    int enviadas;
+    int recebidas;
+    int confirmadas;
+    int rejeitadas;
+    int Tout;
+    int totalTramasI;
+    float Tmedio;
+    clock_t Ttotal;
+} estatisticas;
 
 //ROLE
 #define NOT_DEFINED -1
