@@ -9,9 +9,9 @@
 
 /************** GLOBAL VARIABLES ***************/
 volatile int STOP = FALSE;
-int tries = 0, fd, state = 0, res;
+int tries = 0, fd, state = 0, res, ctrl_val = 0;
 struct termios oldtio, newtio;
-unsigned char ua[5], aux, x;
+unsigned char ua[5], aux, x, a, c;
 
 /************** DEFAULTS ***************/
 #define BAUDRATE B38400
@@ -73,9 +73,10 @@ int write_func(unsigned char *vec, int len)
 
 void state_machine_control(int control)
 {
-    unsigned char a, c;
-
-    printf("0x%02x\n", (unsigned int)(aux & 0xFF));
+    if (aux == C_I0)
+        c = C_I0;
+    else if (aux == C_I1)
+        c = C_I1;
 
     if (control == SET)
     {
@@ -98,7 +99,6 @@ void state_machine_control(int control)
     else if (control == RR)
     {
         a = A_SET;
-        c = C_I1;
     }
 
     switch (state)
@@ -130,8 +130,11 @@ void state_machine_control(int control)
         {
             state = FLAG_RCV;
         }
-        if (aux = c)
+
+        if (aux == c)
         {
+            printf("\nControl flag value on state machine: 0x%02x\n\n", (unsigned int)(c & 0xFF));
+
             state = C_RCV;
         }
         else
@@ -143,8 +146,7 @@ void state_machine_control(int control)
     case C_RCV:
 
         x = a ^ c;
-        printf("0x%02x\n", (unsigned int)(x & 0xFF));
-
+        
         if (aux == FLAG)
         {
             state = FLAG_RCV;
@@ -175,7 +177,12 @@ void state_machine_control(int control)
 
 void state_machine_data()
 {
-    printf("0x%02x\n", (unsigned int)(aux & 0xFF));
+
+    if (aux == C_I0)
+        c = C_I0;
+    else if (aux == C_I1)
+        c = C_I1;
+
     switch (state)
     {
 
@@ -205,8 +212,9 @@ void state_machine_data()
         {
             state = FLAG_RCV;
         }
-        if (aux = C_I1)
+        if (aux == c)
         {
+            printf("\nControl flag value: 0x%02x\n\n", (unsigned int)(c & 0xFF));
             state = C_RCV;
         }
         else
@@ -217,7 +225,7 @@ void state_machine_data()
 
     case C_RCV:
 
-        x = A_SET ^ C_I1;
+        x = A_SET ^ c;
         if (aux == FLAG)
         {
             state = FLAG_RCV;
@@ -460,8 +468,12 @@ int llwrite(char *buf, int bufSize)
 
     append[0] = FLAG;
     append[1] = A_SET;
-    append[2] = C_I1; /*see if it's the right value*/
+    append[2] = C_I0; 
+    if (ctrl_val % 2)
+        append[2] = C_I1;
     append[3] = append[1] ^ append[2];
+
+    printf("Control value on append: 0x%02x\n", (unsigned int)(append[2] & 0xFF));
 
     bcc2 = buf[0] ^ buf[1];
 
@@ -520,7 +532,9 @@ int llwrite(char *buf, int bufSize)
         state_machine_control(RR); /* Verifies that the UA message was received correctly*/
     }
 
-    printf("Confirmation received\n");
+    ctrl_val++;
+
+    printf("\n----- Confirmation received ----\n\n");
 
     return bufSize;
 }
@@ -535,7 +549,9 @@ int llread(char *packet)
 
     rr[0] = FLAG;
     rr[1] = A_SET;
-    rr[2] = C_I1;
+    rr[2] = C_I0;
+    if (ctrl_val % 2)
+        rr[2] = C_I1;
     rr[3] = rr[1] ^ rr[2];
     rr[4] = rr[0];
 
@@ -566,6 +582,9 @@ int llread(char *packet)
         packet[i] = destuff[i];
     }
     printf("Bytes received: %i\n", len);
+
+    ctrl_val++;
+    printf("Control flag val: %i\n", ctrl_val);
 
     printf("\n---- Frame received correctly ----\n\n");
 
@@ -679,8 +698,6 @@ int llclose(linkLayer connectionParameters, int showStatistics)
         }
 
         printf("UA success\n\n---- File received and stored ----\n");
-
-
 
         return 1;
     }
